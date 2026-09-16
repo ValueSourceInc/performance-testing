@@ -1,0 +1,15 @@
+{
+  "name": "performance-testing",
+  "version": "1.0.0",
+  "description": "k6 performance testing suite for new-api with automatic Markdown report generation",
+  "type": "module",
+  "scripts": {
+    "report": "node lib/report-generator.js"
+  },
+  "keywords": ["k6", "performance", "testing", "new-api", "llm"],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
