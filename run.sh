@@ -22,6 +22,13 @@ fi
 : "${API_KEY:=sk-mock}"
 : "${MODELS:=gpt-6-astra,claude-sonnet-5}"
 
+case "$SCENARIO" in
+  soak) : "${SOAK_VUS:=20}"; : "${SOAK_DURATION:=2m}" ;;
+  stress) : "${STRESS_MAX_VUS:=${STRESS_PEAK_VUS:-200}}" ;;
+  spike) : "${SPIKE_MAX_VUS:=${SPIKE_VUS:-200}}" ;;
+  mixed) : "${MIXED_RPS:=20}"; : "${MIXED_DURATION:=3m}" ;;
+esac
+
 mkdir -p logs
 STAMP=$(date +%Y%m%d-%H%M%S)
 LOG="logs/${STAMP}-${SCENARIO}.log"

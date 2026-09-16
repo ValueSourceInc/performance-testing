@@ -4,7 +4,7 @@ import { chatBody } from '../lib/config.js';
 import { execChat } from '../lib/requests.js';
 
 const baseVus = Number(__ENV.SPIKE_BASE_VUS || 10);
-const maxVus = Number(__ENV.SPIKE_MAX_VUS || 200);
+const maxVus = Number(__ENV.SPIKE_MAX_VUS || __ENV.SPIKE_VUS || 200);
 
 export const options = {
   scenarios: {

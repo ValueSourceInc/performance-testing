@@ -3,7 +3,7 @@
 import { chatBody } from '../lib/config.js';
 import { execChat } from '../lib/requests.js';
 
-const maxVus = Number(__ENV.STRESS_MAX_VUS || 200);
+const maxVus = Number(__ENV.STRESS_MAX_VUS || __ENV.STRESS_PEAK_VUS || 200);
 const stepDuration = __ENV.STRESS_STEP_DURATION || '30s';
 const steps = 5; // e.g. 20%..100% of maxVus
 
