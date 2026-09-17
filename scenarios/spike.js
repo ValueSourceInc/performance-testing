@@ -18,11 +18,15 @@ export const options = {
         { duration: '30s', target: baseVus },  // recover
         { duration: '1m', target: baseVus },   // verify recovery
       ],
-      gracefulRampDown: '10s',
+      gracefulRampDown: '90s',
+      gracefulStop: '90s',
     },
+  },
+  thresholds: {
+    'dropped_iterations': ['count<10'],
   },
 };
 
 export default function () {
-  execChat(chatBody({ stream: Math.random() < 0.5 }));
+  execChat(chatBody({ stream: Math.random() < 0.5, promptKind: 'short' }));
 }

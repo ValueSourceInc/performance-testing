@@ -18,11 +18,18 @@ export const options = {
       executor: 'ramping-vus',
       startVUs: Math.max(1, Math.round(maxVus / steps)),
       stages,
-      gracefulRampDown: '10s',
+      // long-output streams run 20s+; short ramp-down force-truncates them and those
+      // iterations would silently vanish from the stats. keep it generous.
+      gracefulRampDown: '90s',
+      gracefulStop: '90s',
     },
+  },
+  thresholds: {
+    'chat_ok': ['rate>0.90'],
+    'dropped_iterations': ['count<10'],
   },
 };
 
 export default function () {
-  execChat(chatBody({ stream: Math.random() < 0.5 }));
+  execChat(chatBody({ stream: Math.random() < 0.5, promptKind: 'short' }));
 }

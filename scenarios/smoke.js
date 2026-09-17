@@ -1,18 +1,22 @@
-// smoke: 1 VU, a few iterations, verify the chain works
+// smoke: 1 VU, a few requests — verify protocol, auth, end markers, accounting before any load
 import { chatBody } from '../lib/config.js';
 import { execChat } from '../lib/requests.js';
-import { check } from 'k6';
 
 export const options = {
-  vus: 1,
-  iterations: 3,
+  scenarios: {
+    smoke: {
+      executor: 'constant-vus',
+      vus: 1,
+      duration: __ENV.SMOKE_DURATION || '30s',
+      gracefulStop: '60s',
+    },
+  },
   thresholds: {
-    chat_ok: ['rate>0.99'],
+    'chat_ok': ['rate>0.99'],
+    'chat_errors': ['count<1'],
   },
 };
 
 export default function () {
-  const b = chatBody({ stream: false });
-  const r = execChat(b);
-  check(r, { 'status 200': x => x.status === 200 });
+  execChat(chatBody({ stream: Math.random() < 0.5, maxTokens: 32 }));
 }

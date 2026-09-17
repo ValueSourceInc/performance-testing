@@ -8,19 +8,27 @@ SCENARIO="${1:-smoke}"
 shift || true
 
 if [ ! -f "scenarios/${SCENARIO}.js" ]; then
-  echo "unknown scenario: $SCENARIO (smoke|soak|stress|spike|mixed)"
+  echo "unknown scenario: ${SCENARIO} (smoke|soak|stress|spike|mixed)"
   exit 1
 fi
 
-# load .env if present (env vars already set take precedence)
+# load .env if present, WITHOUT overriding variables already set in the environment
+# (plain `source .env` would clobber explicit BASE_URL=... ./run.sh overrides)
 if [ -f .env ]; then
-  set -a; source .env; set +a
+  while IFS= read -r line; do
+    case "$line" in ''|\#*) continue ;; esac
+    k="${line%%=*}"
+    [ -n "$k" ] && [ -n "${!k:-}" ] && continue
+    export "$line"
+  done < .env
 fi
 
 # target config — override here or via env
 : "${BASE_URL:=http://localhost:8787}"
 : "${API_KEY:=sk-mock}"
+# API_KEYS (comma-separated) overrides API_KEY for multi-account testing
 : "${MODELS:=gpt-6-astra,claude-sonnet-5}"
+: "${REQ_TIMEOUT_MS:=120s}"
 
 case "$SCENARIO" in
   soak) : "${SOAK_VUS:=20}"; : "${SOAK_DURATION:=2m}" ;;
@@ -32,18 +40,22 @@ esac
 mkdir -p logs
 STAMP=$(date +%Y%m%d-%H%M%S)
 LOG="logs/${STAMP}-${SCENARIO}.log"
+SUMMARY_JSON="logs/${STAMP}-${SCENARIO}.json"
 
 echo "=== k6 ${SCENARIO} -> ${BASE_URL} ($(date)) ===" | tee "$LOG"
 k6 run \
   -e BASE_URL="$BASE_URL" \
   -e API_KEY="$API_KEY" \
+  -e API_KEYS="${API_KEYS:-$API_KEY}" \
   -e MODELS="$MODELS" \
+  -e REQ_TIMEOUT_MS="$REQ_TIMEOUT_MS" \
+  --summary-export "$SUMMARY_JSON" \
   "$@" "scenarios/${SCENARIO}.js" 2>&1 | tee -a "$LOG"
 
 echo "" | tee -a "$LOG"
 echo "log saved: $LOG"
 
-# 生成 Markdown 报告
+# 生成 Markdown 报告(优先解析 JSON summary)
 if command -v node >/dev/null 2>&1 && [ -f lib/report-generator.js ]; then
-  node lib/report-generator.js "$LOG"
+  node lib/report-generator.js "$LOG" "$SUMMARY_JSON"
 fi

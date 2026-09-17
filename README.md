@@ -45,22 +45,44 @@ ls logs/*.log    # 原始 k6 输出
 
 ### 核心指标（优先看这3个）
 
-1. **chat_ok**（成功率）  
-   - `100%` ✅ 系统正常  
-   - `< 95%` ❌ 有问题，看 `chat_status` 找错误码
+1. **chat_ok**（完整成功率）  
+   - 协议级成功 = HTTP 200 + 流式收到结束标记（`[DONE]`/`message_stop`）+ 无错误事件 + 有正文
+   - `100%` ✅ 系统正常；`< 95%` ❌ 看错误分类
+   - 注意：k6 的 `http_req_failed` 只看传输层，4xx/5xx 不算失败，别拿它当业务成功率
 
 2. **chat_latency_ms 的 P95**（用户体验）  
-   - P95 = 95% 用户感知到的最慢响应  
-   - 例：P95=2s 表示 95% 请求在 2 秒内完成
+   - P95 = 95% 请求的端到端耗时
 
 3. **iterations/s**（吞吐量）  
-   - 实际 QPS（每秒完成请求数）  
-   - 对比预期看系统能不能撑住目标流量
+   - 实际 QPS（每秒完成请求数）
+
+### 错误分类（chat_errors 的 type tag）
+
+`client_timeout` / `client_error` / `http_429` / `http_5xx` / `error_event`（200 后错误事件）/
+`no_end_marker`（断流或缺结束标记）/ `empty_body` / `malformed_body`。
+429/5xx 是本站还是上游返回的，状态码分不出来——对照中转站日志或 mock 的 `/metrics` error_types。
+
+### 重要限制：TTFB ≠ TTFT
+
+k6 的 http 模块会**缓冲整个响应体**，`chat_ttfb_ms` 只是"响应头到达时间"。
+流式请求的真实首字时间（首段非空正文）用 `tools/sse_probe.py` 测：
+
+```bash
+# 真 TTFT + 协议完整性（httpx 逐段读 SSE）
+python3 tools/sse_probe.py --model mock-gpt-4o -n 20 -c 4 --mock-ttft-ms 400
+
+# 强制故障注入验证 / 客户端取消测试
+python3 tools/sse_probe.py --fault disconnect -n 3
+python3 tools/sse_probe.py --cancel-after 0.5 -n 3   # 收到0.5s内容后主动断开
+
+# 心跳陷阱：--total-timeout 必须设，否则只发心跳的流永不超时
+python3 tools/sse_probe.py --fault heartbeat --total-timeout 30
+```
 
 ### 其他指标
 
-- **chat_ttft_ms**: Time To First Token，stream 请求等首字时间（AI 对话体感核心）
-- **http_req_failed**: HTTP 层失败率（网络/连接问题）
+- **dropped_iterations**: >0 表示压测机没发出目标负载，本轮结果不能当容量结论
+- **http_req_failed**: HTTP 传输层失败率（网络/连接问题）
 - **vus / vus_max**: 并发用户数（实际/预分配）
 
 ## 环境变量
@@ -69,7 +91,9 @@ ls logs/*.log    # 原始 k6 输出
 # 压测目标
 BASE_URL=http://localhost:3000      # new-api 地址（或 http://localhost:8787 直打 mock）
 API_KEY=sk-xxx                      # new-api 后台建的令牌
+API_KEYS=sk-a,sk-b                  # 多账号测试（逗号分隔，轮询分配；优先于 API_KEY）
 MODELS=gpt-6-astra,claude-sonnet-5  # 混合流量抽哪些模型（逗号分隔）
+REQ_TIMEOUT_MS=120s                 # 请求总时限（k6 http timeout）
 
 # 场景参数（可选，覆盖默认值）
 SOAK_VUS=10           # soak 场景并发数
@@ -121,12 +145,16 @@ BASE_URL=http://localhost:8787 API_KEY=任意值 ./run.sh smoke
 ```
 scenarios/        ← k6 场景脚本（smoke.js / soak.js / ...）
 lib/
-  report-generator.js  ← 报告生成器（解析 k6 输出 → Markdown）
+  requests.js           ← 请求执行 + 成功判据（结束标记校验）+ 错误分类
+  report-generator.js   ← 报告生成器（解析 k6 summary JSON → Markdown）
+tools/
+  sse_probe.py     ← httpx 流式探针：真 TTFT / 完整性 / 取消测试
 logs/
-  20260916-*.log       ← k6 原始输出
-  20260916-*.md        ← 自动生成的报告
-run.sh            ← 统一入口（加载 .env + 调 k6 + 生成报告）
-.env              ← 配置文件（BASE_URL / API_KEY / MODELS）
+  20260916-*.log   ← k6 原始输出
+  20260916-*.json  ← k6 summary-export
+  20260916-*.md    ← 自动生成的报告
+run.sh             ← 统一入口（加载 .env + 调 k6 + 生成报告）
+.env               ← 配置文件（BASE_URL / API_KEY / MODELS）
 ```
 
 ## 常见问题

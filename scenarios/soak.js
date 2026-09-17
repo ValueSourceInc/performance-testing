@@ -12,13 +12,15 @@ export const options = {
       executor: 'constant-vus',
       vus,
       duration,
+      gracefulStop: '90s', // long streams need room to finish; truncated requests are NOT counted as completed
     },
   },
   thresholds: {
     'chat_ok': ['rate>0.95'],
+    'dropped_iterations': ['count<1'],
   },
 };
 
 export default function () {
-  execChat(chatBody({ stream: Math.random() < 0.5 }));
+  execChat(chatBody({ stream: Math.random() < 0.5, promptKind: 'short' }));
 }
