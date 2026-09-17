@@ -1,0 +1,22 @@
+{
+  "owner": null,
+  "serverVersion": null,
+  "serverResources": null,
+  "instances": null,
+  "database": null,
+  "cache": null,
+  "proxy": null,
+  "dataScale": null,
+  "environmentDifferences": null,
+  "networkLocation": null,
+  "routing": null,
+  "accountLimits": null,
+  "upstreamLimits": null,
+  "retries": null,
+  "cachePolicy": null,
+  "resourceEvidence": null,
+  "billingEvidence": null,
+  "recoveryEvidence": null,
+  "ttftEvidence": null,
+  "stopConditions": null
+}

@@ -1,177 +1,136 @@
 # Performance Testing for new-api
 
-k6 压测工具，给 new-api（或直接给 mock-llm-service）打流量，自动生成 Markdown 报告。
+k6 压测与 Node.js 分档报告。支持 OpenAI Chat Completions 文本流式/非流式请求。
+需要 k6、Node.js >=18；HTTPX 探针另需 Python 和 httpx。
 
-## 快速开始
+## 运行
 
 ```bash
-# 1. 配置目标
 cp .env.example .env
-# 编辑 .env：BASE_URL（new-api 地址）、API_KEY（令牌）、MODELS（逗号分隔）
-
-# 2. 运行场景
-./run.sh smoke   # 冒烟测试（3次请求验证链路）
-./run.sh soak    # 稳态测试（默认 10 VU × 2 分钟）
-./run.sh stress  # 压力测试（阶梯加压到 200 VU）
-./run.sh spike   # 尖峰测试（瞬间 100 VU）
-./run.sh mixed   # 混合流量（短/长 stream + non-stream）
-
-# 3. 查看报告
-ls logs/*.md     # Markdown 报告
-ls logs/*.log    # 原始 k6 输出
+# 修改 BASE_URL、API_KEY、MODELS；已存在的 .env 不要覆盖。
+./run.sh smoke
+./run.sh stress
 ```
 
-## 报告示例
+`run.sh` 清除大小写 HTTP/HTTPS/ALL_PROXY 并设置 NO_PROXY=*，k6 强制直连。
+只影响子进程，不改变系统代理。直接执行 `k6 run` 不经过此处理。
+命令行环境变量优先于 `.env`。负载与时限通过环境变量调整；入口不接受额外 k6 参数，避免实际负载与记录计划不一致。
 
-每次压测自动生成 `.md` 报告，包含：
-- ✅ 测试结果总览（成功率、吞吐量）
-- 📊 性能指标（延迟分布 P50/P95/P99、TTFT）
-- 📈 资源使用（VU、流量）
-- 🔍 完整指标明细（折叠可展开）
+| 场景 | 负载方式 | 参数 |
+| --- | --- | --- |
+| smoke | 固定 1 VU | SMOKE_DURATION，默认 30s |
+| soak | 固定并发 | SOAK_VUS、SOAK_DURATION |
+| stress | 5 档固定并发保持，档间短暂升压 | STRESS_MAX_VUS、STRESS_STEP_DURATION、STRESS_RAMP_DURATION |
+| spike | 基线、突发、降载恢复 | SPIKE_BASE_VUS、SPIKE_MAX_VUS |
+| mixed | 固定发起速率，长短输入输出混合 | MIXED_RPS、MIXED_DURATION、MIXED_PREALLOCATED_VUS、MIXED_MAX_VUS |
 
-示例：`logs/20260916-163047-mixed.md`
+每 VU 同时执行一个请求，等其结束立即发下一个。VU 不是 RPS，也不是服务端实际活跃连接数。
+`SOAK_VUS` 只影响 soak；smoke 始终为 1 VU。
 
-## 场景说明
+## 分档与时长
 
-| 场景 | 用途 | 默认配置 | 调整参数 |
-|------|------|---------|---------|
-| **smoke** | 验证链路通不通 | 1 VU × 3次 | - |
-| **soak** | 看长时间运行稳定性 | 10 VU × 2 分钟 | `SOAK_VUS=20 SOAK_DURATION=5m ./run.sh soak` |
-| **stress** | 找系统瓶颈（哪个并发数开始扛不住） | 阶梯 10→200 VU | `STRESS_STAGES` 环境变量 |
-| **spike** | 瞬时流量冲击恢复能力 | 瞬间 100 VU | `SPIKE_VUS=200 ./run.sh spike` |
-| **mixed** | 真实混合流量（模拟生产） | 3 RPS × 15s | `MIXED_RPS=10 MIXED_DURATION=1m ./run.sh mixed` |
+```dotenv
+STRESS_MAX_VUS=1000
+STRESS_STEP_DURATION=3m
+STRESS_RAMP_DURATION=10s
+WARMUP_DURATION=15s
+REQ_TIMEOUT_MS=120s
+UPSTREAM_MODE=mock
+```
 
-## 指标解读
+上述 stress：200、400、600、800、1000 VU 各保持 3 分钟，4 次升压各 10 秒。
+总发流量时间 **15 分 40 秒**，随后最多等待 120 秒排空。
+每档前 15 秒标为 warmup，剩余 165 秒单独统计；升压标为 ramp。
+WARMUP_DURATION 必须小于每段保持时间。它是统计排除窗口，不代表系统必然已稳定。
+跨档尾部请求仍按原档归属；实际客户端在途数可能与目标 VU 不完全相同，见报告。
 
-### 核心指标（优先看这3个）
-
-1. **chat_ok**（完整成功率）  
-   - 协议级成功 = HTTP 200 + 流式收到结束标记（`[DONE]`/`message_stop`）+ 无错误事件 + 有正文
-   - `100%` ✅ 系统正常；`< 95%` ❌ 看错误分类
-   - 注意：k6 的 `http_req_failed` 只看传输层，4xx/5xx 不算失败，别拿它当业务成功率
-
-2. **chat_latency_ms 的 P95**（用户体验）  
-   - P95 = 95% 请求的端到端耗时
-
-3. **iterations/s**（吞吐量）  
-   - 实际 QPS（每秒完成请求数）
-
-### 错误分类（chat_errors 的 type tag）
-
-`client_timeout` / `client_error` / `http_429` / `http_5xx` / `error_event`（200 后错误事件）/
-`no_end_marker`（断流或缺结束标记）/ `empty_body` / `malformed_body`。
-429/5xx 是本站还是上游返回的，状态码分不出来——对照中转站日志或 mock 的 `/metrics` error_types。
-
-### 重要限制：TTFB ≠ TTFT
-
-k6 的 http 模块会**缓冲整个响应体**，`chat_ttfb_ms` 只是"响应头到达时间"。
-流式请求的真实首字时间（首段非空正文）用 `tools/sse_probe.py` 测：
+快速探索（更短样本不能证明长期稳定性）：
 
 ```bash
-# 真 TTFT + 协议完整性（httpx 逐段读 SSE）
-python3 tools/sse_probe.py --model mock-gpt-4o -n 20 -c 4 --mock-ttft-ms 400
-
-# 强制故障注入验证 / 客户端取消测试
-python3 tools/sse_probe.py --fault disconnect -n 3
-python3 tools/sse_probe.py --cancel-after 0.5 -n 3   # 收到0.5s内容后主动断开
-
-# 心跳陷阱：--total-timeout 必须设，否则只发心跳的流永不超时
-python3 tools/sse_probe.py --fault heartbeat --total-timeout 30
+STRESS_STEP_DURATION=1m STRESS_RAMP_DURATION=5s WARMUP_DURATION=10s \
+  MIN_STEADY_SECONDS=40 ./run.sh stress
 ```
 
-### 其他指标
-
-- **dropped_iterations**: >0 表示压测机没发出目标负载，本轮结果不能当容量结论
-- **http_req_failed**: HTTP 传输层失败率（网络/连接问题）
-- **vus / vus_max**: 并发用户数（实际/预分配）
-
-## 环境变量
+总发流量时间为 5 分 20 秒；先定位恶化范围，再对候选档位执行固定负载复测：
 
 ```bash
-# 压测目标
-BASE_URL=http://localhost:3000      # new-api 地址（或 http://localhost:8787 直打 mock）
-API_KEY=sk-xxx                      # new-api 后台建的令牌
-API_KEYS=sk-a,sk-b                  # 多账号测试（逗号分隔，轮询分配；优先于 API_KEY）
-MODELS=gpt-6-astra,claude-sonnet-5  # 混合流量抽哪些模型（逗号分隔）
-REQ_TIMEOUT_MS=120s                 # 请求总时限（k6 http timeout）
-
-# 场景参数（可选，覆盖默认值）
-SOAK_VUS=10           # soak 场景并发数
-SOAK_DURATION=2m      # soak 场景持续时间
-STRESS_PEAK_VUS=200   # stress 场景峰值 VU
-SPIKE_VUS=100         # spike 场景冲击 VU
-MIXED_RPS=3           # mixed 场景目标 RPS
-MIXED_DURATION=15s    # mixed 场景持续时间
+SOAK_VUS=400 SOAK_DURATION=10m ./run.sh soak
 ```
 
-## 配合 mock-llm-service
+`UPSTREAM_MODE` 只是报告标记，不会改变渠道或保证回退隔离。模型、测试账号和失败回退渠道应已指向 mock。
+mock 输出长度默认来自上游配置；mixed/smoke 额外传 mock_max_tokens，是否透传需核对中转站。
+SEND_MAX_TOKENS=1 可在指定 maxTokens 的请求上同时发送真实 max_tokens；soak/stress/spike 不指定该上限。
+这套极限配置没有真实上游预算控制，不应直接用于付费模型费用验证。
 
-压测工具本身需要上游服务，两种用法：
+## 报告与数据
 
-### 方式 1：压测 new-api（推荐）
+同一轮文件拥有相同前缀，保存在 `logs/`（可用 OUTPUT_DIR 覆盖）：
+
+| 文件 | 内容 |
+| --- | --- |
+| .log / .json | k6 控制台与全局摘要 |
+| .meta.json | 执行计划、机器信息、版本、门槛、起止时间与退出码 |
+| .events.jsonl | k6 单独 console 文件中的发起/结束事件；原始证据 |
+| .requests.jsonl | 合并后的逐请求记录；无结束事件时保留 unresolved |
+| .analysis.json | 分档、分窗口、分模型/流式的机器可读统计 |
+| .md | 对齐指南第 9 节的报告，含缺失证据与适用范围 |
+
+请求包含 X-Request-ID 便于对照中转站/上游日志；中转站是否透传需自行确认。
+请求 ID 不用作指标标签。明细只保存模型、输入字符数、输出上限、时间、错误分类、结束原因和 usage；不保存 Key、提示词或响应正文。
+逐请求事件写入文件会增加压测机开销，需检查压测机 CPU、内存和磁盘。单机分析器在内存中合并请求记录，大规模长测需关注分析内存。
+
+**两个表的口径不同：**
+
+- 分档结果：请求发起时绑定窗口；跨档、排空期间结束的结果和延迟归回该窗口。成功率分母包括失败与未结束请求。
+- 时间窗口：按实际发起/结束时刻统计 RPS；前档请求在本窗口结束，属于本窗口完成速率。排空另列，不倒灌正式窗口。
+
+客户端在途均值/峰值来自请求区间，未结束请求按收集终点截尾；服务端活跃请求需外部监控。
+成功 P50/P95/P99 只包含协议完整成功请求。所有已结束请求 P95 另列，包含超时和失败。
+自然结束 stop 和达到长度限制 length 均算文本协议成功，报告按 finish_reason 分账。
+没有返回 usage 的请求标为缺失，不当作零；token/s 只反映已知最终用量在完成窗口的归集速率。
+整体 summary 的 QPS 包含预热、升压和排空，不能代表某个固定并发档位。
+
+## 验收门槛
+
+```dotenv
+# 以下只是探索示例，不是通用上线 SLA。
+MIN_SUCCESS_RATE=0.99
+MAX_SUCCESS_P95_MS=15000
+MIN_STAGE_SAMPLES=200
+MIN_STEADY_SECONDS=60
+```
+
+MIN_SUCCESS_RATE 同时用于 k6 全局阈值；其余与分档结果一起在报告中评估。
+门槛不完整、样本或时长不足、明细对账不符、请求未结束时，不标为分档数值通过。
+mixed 还要求 dropped_iterations=0 且实际发起 RPS 至少达到目标的 99%。
+这些检查在结束后执行，**不会自动停止升压**。必要时 Ctrl+C 停止；硬杀进程后可手工恢复报告，未结束调用保留待核实。
+即使数值门槛通过，也要核对资源、计费和恢复，报告不会自动声明系统极限或推荐运营限额。
+k6 非零退出时仍生成报告，并保留退出码；运行失败、未采集数据不会被当作正常通过。
+
+## 外部证据与限制
+
+复制 `test-context.example.json` 为 `test-context.json`，设置 `TEST_CONTEXT_FILE=test-context.json`。
+填写服务端版本、机器与依赖、路由/重试、缓存、监控曲线和计费核对附件路径。不要放真实 Key、账号隐私或提示词。
+未填写的字段显示待核对；提供附件路径不代表程序验证了证据。
+
+本工具不自动读取生产监控或账本。new-api、mock 与压测机资源曲线，数据库排队、重试放大、计费和恢复需要另外采集。
+k6 HTTP 会缓冲流式响应，不能测真实首字 TTFT；报告明确标为未采集。
+`tools/sse_probe.py` 是独立低负载探针，其结果不能代替本轮同档位 TTFT，也不能用于证明容量。
+状态码不能区分本站与上游限流来源；客户端错误不能证明请求到达服务端。
+
+旧报告重新生成时只保留可核实的全局信息，无法凭全局 P95 还原各档 P95：
 
 ```bash
-# 1. mock-llm-service 起在 8787
-cd ../mock-llm-service && npm start
-
-# 2. new-api 渠道配置
-#    Base URL: http://localhost:8787
-#    类型: OpenAI
-#    模型: 启用你要压测的模型（如 gpt-6-astra）
-
-# 3. 压测打 new-api
-cd ../performance-testing
-BASE_URL=http://localhost:3000 API_KEY=sk-<new-api令牌> ./run.sh stress
+node lib/report-generator.js logs/<run>.log logs/<run>.json
 ```
 
-### 方式 2：直打 mock（调试压测工具本身）
+同前缀的 meta/events 文件会被自动发现。历史报告不会在新一轮运行时被覆盖。
+
+## 自检
 
 ```bash
-# mock-llm-service 起在 8787
-cd ../mock-llm-service && npm start
-
-# 压测直接打 mock
-cd ../performance-testing
-BASE_URL=http://localhost:8787 API_KEY=任意值 ./run.sh smoke
+npm test
 ```
 
-## 依赖
-
-- [k6](https://k6.io/docs/get-started/installation/)（已装：`/opt/homebrew/bin/k6`）
-- Node.js ≥ 18（报告生成器用）
-
-## 文件结构
-
-```
-scenarios/        ← k6 场景脚本（smoke.js / soak.js / ...）
-lib/
-  requests.js           ← 请求执行 + 成功判据（结束标记校验）+ 错误分类
-  report-generator.js   ← 报告生成器（解析 k6 summary JSON → Markdown）
-tools/
-  sse_probe.py     ← httpx 流式探针：真 TTFT / 完整性 / 取消测试
-logs/
-  20260916-*.log   ← k6 原始输出
-  20260916-*.json  ← k6 summary-export
-  20260916-*.md    ← 自动生成的报告
-run.sh             ← 统一入口（加载 .env + 调 k6 + 生成报告）
-.env               ← 配置文件（BASE_URL / API_KEY / MODELS）
-```
-
-## 常见问题
-
-### Q: 报告里 P95 跳变很大？
-A: 系统瓶颈或排队，检查目标服务日志、数据库慢查询、GC 停顿。
-
-### Q: 实际 RPS 远低于预期？
-A: 单请求耗时太长 × 并发数不够。提高 VU 数或降低 mock 的 `DEFAULT_OUTPUT_TOKENS`。
-
-### Q: 成功率 < 95%？
-A: 看报告里的 `chat_status` 分布找错误码：
-   - 429: 限流
-   - 500: 服务内部错误
-   - 504: 超时
-
-### Q: 怎么看单个模型的指标？
-A: k6 按 `model` tag 分组，但终端不显示。方案：
-   1. 看 mock 的 `/metrics` 端点：`curl -s localhost:8787/metrics | jq .models`
-   2. 或导出 JSON：`k6 run --summary-export=report.json xxx.js && jq . report.json`
+包含分档归属、尾部窗口、未结束请求、协议判定、历史报告降级，以及真实 k6 对本地 HTTP fixture 的短测。
+安装 k6 时会执行本地集成测试；未安装时该测试明确跳过。自检不访问生产地址，不产生模型费用。

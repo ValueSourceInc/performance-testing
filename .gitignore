@@ -1,5 +1,6 @@
 logs
 node_modules/
 .env
+test-context.json
 .history
 .DS_Store

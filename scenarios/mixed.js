@@ -2,29 +2,9 @@
 // weights: 40% short stream, 15% long stream, 15% long-input stream, 20% short non-stream, 10% long non-stream
 import { chatBody, MODELS } from '../lib/config.js';
 import { execChat } from '../lib/requests.js';
+import { scenarioOptions } from '../lib/load-plan.js';
 
-const duration = __ENV.MIXED_DURATION || '3m';
-const targetRps = Number(__ENV.MIXED_RPS || 20);
-
-export const options = {
-  scenarios: {
-    mixed: {
-      executor: 'constant-arrival-rate',
-      rate: targetRps,
-      timeUnit: '1s',
-      duration,
-      // VUs must cover avg-inflight = RPS × avg duration; too few => dropped_iterations,
-      // which means the target rate was never actually issued — do not ignore that threshold
-      preAllocatedVUs: Math.max(50, targetRps * 10),
-      maxVUs: Math.max(100, targetRps * 20),
-      gracefulStop: __ENV.REQ_TIMEOUT_MS || '120s',
-    },
-  },
-  thresholds: {
-    'chat_ok': ['rate>0.95'],
-    'dropped_iterations': ['count<1'],
-  },
-};
+export const options = scenarioOptions('mixed', __ENV);
 
 const SHORT = 64;
 const LONG = 1024;

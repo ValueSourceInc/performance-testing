@@ -4,6 +4,7 @@
   "description": "k6 performance testing suite for new-api with automatic Markdown report generation",
   "type": "module",
   "scripts": {
+    "test": "node --test",
     "report": "node lib/report-generator.js"
   },
   "keywords": ["k6", "performance", "testing", "new-api", "llm"],
