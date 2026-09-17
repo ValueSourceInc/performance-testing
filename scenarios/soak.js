@@ -12,7 +12,7 @@ export const options = {
       executor: 'constant-vus',
       vus,
       duration,
-      gracefulStop: '90s', // long streams need room to finish; truncated requests are NOT counted as completed
+      gracefulStop: __ENV.REQ_TIMEOUT_MS || '120s', // long streams need room to finish; truncated requests are NOT counted as completed
     },
   },
   thresholds: {

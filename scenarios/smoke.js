@@ -8,7 +8,7 @@ export const options = {
       executor: 'constant-vus',
       vus: 1,
       duration: __ENV.SMOKE_DURATION || '30s',
-      gracefulStop: '60s',
+      gracefulStop: __ENV.REQ_TIMEOUT_MS || '120s',
     },
   },
   thresholds: {

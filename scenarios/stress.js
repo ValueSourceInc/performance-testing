@@ -20,8 +20,8 @@ export const options = {
       stages,
       // long-output streams run 20s+; short ramp-down force-truncates them and those
       // iterations would silently vanish from the stats. keep it generous.
-      gracefulRampDown: '90s',
-      gracefulStop: '90s',
+      gracefulRampDown: __ENV.REQ_TIMEOUT_MS || '120s',
+      gracefulStop: __ENV.REQ_TIMEOUT_MS || '120s',
     },
   },
   thresholds: {

@@ -17,9 +17,13 @@ fi
 if [ -f .env ]; then
   while IFS= read -r line; do
     case "$line" in ''|\#*) continue ;; esac
-    k="${line%%=*}"
-    [ -n "$k" ] && [ -n "${!k:-}" ] && continue
-    export "$line"
+    line="${line%%#*}"
+    [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
+    k="${BASH_REMATCH[1]}"
+    v="${BASH_REMATCH[2]}"
+    v="${v%"${v##*[![:space:]]}"}"
+    [ "${!k+x}" = x ] && continue
+    export "$k=$v"
   done < .env
 fi
 
@@ -43,6 +47,7 @@ LOG="logs/${STAMP}-${SCENARIO}.log"
 SUMMARY_JSON="logs/${STAMP}-${SCENARIO}.json"
 
 echo "=== k6 ${SCENARIO} -> ${BASE_URL} ($(date)) ===" | tee "$LOG"
+set +e
 k6 run \
   -e BASE_URL="$BASE_URL" \
   -e API_KEY="$API_KEY" \
@@ -52,6 +57,8 @@ k6 run \
   --summary-export "$SUMMARY_JSON" \
   "$@" "scenarios/${SCENARIO}.js" 2>&1 | tee -a "$LOG"
 
+K6_STATUS=${PIPESTATUS[0]}
+set -e
 echo "" | tee -a "$LOG"
 echo "log saved: $LOG"
 
@@ -59,3 +66,5 @@ echo "log saved: $LOG"
 if command -v node >/dev/null 2>&1 && [ -f lib/report-generator.js ]; then
   node lib/report-generator.js "$LOG" "$SUMMARY_JSON"
 fi
+
+exit "$K6_STATUS"

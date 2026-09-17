@@ -18,8 +18,8 @@ export const options = {
         { duration: '30s', target: baseVus },  // recover
         { duration: '1m', target: baseVus },   // verify recovery
       ],
-      gracefulRampDown: '90s',
-      gracefulStop: '90s',
+      gracefulRampDown: __ENV.REQ_TIMEOUT_MS || '120s',
+      gracefulStop: __ENV.REQ_TIMEOUT_MS || '120s',
     },
   },
   thresholds: {

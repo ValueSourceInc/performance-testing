@@ -17,7 +17,7 @@ export const options = {
       // which means the target rate was never actually issued — do not ignore that threshold
       preAllocatedVUs: Math.max(50, targetRps * 10),
       maxVUs: Math.max(100, targetRps * 20),
-      gracefulStop: '90s',
+      gracefulStop: __ENV.REQ_TIMEOUT_MS || '120s',
     },
   },
   thresholds: {
