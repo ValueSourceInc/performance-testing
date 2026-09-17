@@ -33,6 +33,7 @@ fi
 # API_KEYS (comma-separated) overrides API_KEY for multi-account testing
 : "${MODELS:=gpt-6-astra,claude-sonnet-5}"
 : "${REQ_TIMEOUT_MS:=120s}"
+: "${API_KEYS:=$API_KEY}"
 
 case "$SCENARIO" in
   soak) : "${SOAK_VUS:=20}"; : "${SOAK_DURATION:=2m}" ;;
@@ -47,13 +48,23 @@ LOG="logs/${STAMP}-${SCENARIO}.log"
 SUMMARY_JSON="logs/${STAMP}-${SCENARIO}.json"
 
 echo "=== k6 ${SCENARIO} -> ${BASE_URL} ($(date)) ===" | tee "$LOG"
+# config lines — report-generator 解析进"测试条件"表(指南 §9.1)
+for c in "BASE_URL=$BASE_URL" "MODELS=$MODELS" "REQ_TIMEOUT_MS=$REQ_TIMEOUT_MS" \
+         "SOAK_VUS=${SOAK_VUS:-}" "SOAK_DURATION=${SOAK_DURATION:-}" \
+         "STRESS_MAX_VUS=${STRESS_MAX_VUS:-}" "STRESS_STEP_DURATION=${STRESS_STEP_DURATION:-30s}" \
+         "SPIKE_BASE_VUS=${SPIKE_BASE_VUS:-}" "SPIKE_MAX_VUS=${SPIKE_MAX_VUS:-}" \
+         "MIXED_RPS=${MIXED_RPS:-}" "MIXED_DURATION=${MIXED_DURATION:-}" \
+         "MOCK_FAULTS=${MOCK_FAULTS:-off}" "API_KEYS_COUNT=$(echo "$API_KEYS" | tr ',' '\n' | wc -l | tr -d ' ')"; do
+  echo "config: ${c%%=*}=$(echo "${c#*=}" | sed 's/ *$//')" | tee -a "$LOG"
+done
 set +e
 k6 run \
   -e BASE_URL="$BASE_URL" \
   -e API_KEY="$API_KEY" \
-  -e API_KEYS="${API_KEYS:-$API_KEY}" \
+  -e API_KEYS="$API_KEYS" \
   -e MODELS="$MODELS" \
   -e REQ_TIMEOUT_MS="$REQ_TIMEOUT_MS" \
+  -e SEND_MAX_TOKENS="${SEND_MAX_TOKENS:-0}" \
   --summary-export "$SUMMARY_JSON" \
   "$@" "scenarios/${SCENARIO}.js" 2>&1 | tee -a "$LOG"
 
