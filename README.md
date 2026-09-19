@@ -24,17 +24,19 @@ cp .env.example .env
 | --- | --- | --- |
 | smoke | 固定 1 VU | SMOKE_DURATION，默认 30s |
 | soak | 固定并发 | SOAK_VUS、SOAK_DURATION |
-| stress | 5 档固定并发保持，档间短暂升压 | STRESS_MAX_VUS、STRESS_STEP_DURATION、STRESS_RAMP_DURATION |
+| stress | 5 档固定并发保持，档间短暂升压 | STRESS_START_VUS、STRESS_MAX_VUS、STRESS_STEP_DURATION、STRESS_RAMP_DURATION |
 | spike | 基线、突发、降载恢复 | SPIKE_BASE_VUS、SPIKE_MAX_VUS |
-| mixed | 固定发起速率，长短输入输出混合 | MIXED_RPS、MIXED_DURATION、MIXED_PREALLOCATED_VUS、MIXED_MAX_VUS |
+| mixed | 固定 2000 VU，长短输入输出混合 | MIXED_VUS、MIXED_DURATION |
+| longstream | 固定 2000 VU，全流式长请求 | LONG_VUS、LONG_DURATION |
 
 每 VU 同时执行一个请求，等其结束立即发下一个。VU 不是 RPS，也不是服务端实际活跃连接数。
-`SOAK_VUS` 只影响 soak；smoke 始终为 1 VU。
+`SOAK_VUS` 只影响 soak；smoke 始终为 1 VU。stress 默认从 2000 升至 6000，首末档之间等分五档；恢复阶段回到首档。
 
 ## 分档与时长
 
 ```dotenv
-STRESS_MAX_VUS=1000
+STRESS_START_VUS=2000
+STRESS_MAX_VUS=6000
 STRESS_STEP_DURATION=3m
 STRESS_RAMP_DURATION=10s
 WARMUP_DURATION=15s
@@ -42,7 +44,7 @@ REQ_TIMEOUT_MS=120s
 UPSTREAM_MODE=mock
 ```
 
-上述 stress：200、400、600、800、1000 VU 各保持 3 分钟，4 次升压各 10 秒。
+上述 stress：2000、3000、4000、5000、6000 VU 各保持 3 分钟，4 次升压各 10 秒。
 总发流量时间 **15 分 40 秒**，随后最多等待 120 秒排空。
 每档前 15 秒标为 warmup，剩余 165 秒单独统计；升压标为 ramp。
 WARMUP_DURATION 必须小于每段保持时间。它是统计排除窗口，不代表系统必然已稳定。
@@ -106,7 +108,7 @@ MIN_STEADY_SECONDS=60
 
 MIN_SUCCESS_RATE 同时用于 k6 全局阈值；其余与分档结果一起在报告中评估。
 门槛不完整、样本或时长不足、明细对账不符、请求未结束时，不标为分档数值通过。
-mixed 还要求 dropped_iterations=0 且实际发起 RPS 至少达到目标的 99%。
+mixed 使用固定并发执行器，RPS 为观测结果；旧 MIXED_RPS / MIXED_PREALLOCATED_VUS / MIXED_MAX_VUS 不再控制负载。
 这些检查在结束后执行，**不会自动停止升压**。必要时 Ctrl+C 停止；硬杀进程后可手工恢复报告，未结束调用保留待核实。
 即使数值门槛通过，也要核对资源、计费和恢复，报告不会自动声明系统极限或推荐运营限额。
 k6 非零退出时仍生成报告，并保留退出码；运行失败、未采集数据不会被当作正常通过。

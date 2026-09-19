@@ -6,7 +6,7 @@ import path from 'node:path';
 
 test('stress recovery returns to the initial load and keeps its own observed window', async () => {
   const { buildPlan } = await import('../lib/load-plan.js');
-  const p = buildPlan('stress', { STRESS_MAX_VUS: '1000', STRESS_STEP_DURATION: '3m',
+  const p = buildPlan('stress', { STRESS_START_VUS: '200', STRESS_MAX_VUS: '1000', STRESS_STEP_DURATION: '3m',
     STRESS_RAMP_DURATION: '30s', WARMUP_DURATION: '15s', STRESS_RECOVERY_DURATION: '3m' });
   assert.equal(p.durationMs, 1230000);
   assert.equal(p.scenario.stages.at(-1).target, 200);
@@ -33,7 +33,7 @@ test('transport error diagnostics retain codes and time ranges without rewriting
 
 test('stress has real holds, separate ramp windows and warmup', async () => {
   const { buildPlan } = await import('../lib/load-plan.js');
-  const p = buildPlan('stress', { STRESS_MAX_VUS: '1000', STRESS_STEP_DURATION: '3m', STRESS_RAMP_DURATION: '10s', WARMUP_DURATION: '15s' });
+  const p = buildPlan('stress', { STRESS_START_VUS: '200', STRESS_MAX_VUS: '1000', STRESS_STEP_DURATION: '3m', STRESS_RAMP_DURATION: '10s', WARMUP_DURATION: '15s' });
   assert.equal(p.durationMs, 940000);
   assert.equal(p.windows[0].phase, 'warmup');
   assert.equal(p.windows[1].endMs, 180000);

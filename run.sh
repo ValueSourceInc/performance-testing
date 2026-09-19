@@ -47,16 +47,16 @@ export STREAM_METER
 
 case "$SCENARIO" in
   soak) : "${SOAK_VUS:=1000}"; : "${SOAK_DURATION:=2m}" ;;
-  stress) : "${STRESS_MAX_VUS:=${STRESS_PEAK_VUS:-1000}}" ;;
+  stress) : "${STRESS_START_VUS:=2000}"; : "${STRESS_MAX_VUS:=${STRESS_PEAK_VUS:-6000}}" ;;
   spike) : "${SPIKE_MAX_VUS:=${SPIKE_VUS:-1000}}" ;;
-  mixed) : "${MIXED_RPS:=20}"; : "${MIXED_DURATION:=3m}"; : "${MIXED_PREALLOCATED_VUS:=1000}"; : "${MIXED_MAX_VUS:=1000}" ;;
+  mixed) : "${MIXED_VUS:=2000}"; : "${MIXED_DURATION:=3m}" ;;
   # 长流场景: REQ_TIMEOUT_MS 需大于流时长(8192 tokens → 2731 事件 × 25ms ≈ 68s,建议超时 3m)
   # SEND_MAX_TOKENS 必须=1: mock_max_tokens 过不了 relay,真实 max_tokens 才能控 mock 输出
-  longstream) : "${LONG_VUS:=50}"; : "${LONG_DURATION:=5m}"; : "${MOCK_MAX_TOKENS:=8192}"; : "${REQ_TIMEOUT_MS:=3m}"; : "${SEND_MAX_TOKENS:=1}" ;;
+  longstream) : "${LONG_VUS:=2000}"; : "${LONG_DURATION:=5m}"; : "${MOCK_MAX_TOKENS:=8192}"; : "${REQ_TIMEOUT_MS:=3m}"; : "${SEND_MAX_TOKENS:=1}" ;;
 esac
 
 export BASE_URL API_KEY API_KEYS MODELS REQ_TIMEOUT_MS
-export SOAK_VUS SOAK_DURATION STRESS_MAX_VUS SPIKE_MAX_VUS MIXED_RPS MIXED_DURATION MIXED_PREALLOCATED_VUS MIXED_MAX_VUS
+export SOAK_VUS SOAK_DURATION STRESS_START_VUS STRESS_MAX_VUS SPIKE_MAX_VUS MIXED_VUS MIXED_DURATION
 export LONG_VUS LONG_DURATION MOCK_MAX_TOKENS
 mkdir -p "${OUTPUT_DIR:-logs}"
 STAMP="$(date +%Y%m%d-%H%M%S)-$$"

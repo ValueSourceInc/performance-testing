@@ -36,7 +36,7 @@
 
 - 上轮 mock 流时长 = TTFT 800ms + tokens×20ms，默认 512 tokens ≈ 11s，与真实 60–90s 请求形态差别大。
 - 新场景 `scenarios/longstream.js`：100% 流式、固定并发、`MOCK_MAX_TOKENS=8192` 控制 mock 输出（2731 事件 × 25ms ≈ 68s，实测 2026-09-19 已端到端穿透验证）。
-- 运行：`LONG_VUS=50 LONG_DURATION=5m REQ_TIMEOUT_MS=3m bash run-aws.sh longstream`（run.sh 已内置默认值）。
+- 运行：`LONG_VUS=2000 LONG_DURATION=5m REQ_TIMEOUT_MS=3m bash run-aws.sh longstream`（run.sh 已内置默认值）。
 - 已本地端到端验证（mock + 真实样本 + bodyBytes 记录）。
 
 ## 6. 上游配额、重试、数据库写入 — 下一轮观察项

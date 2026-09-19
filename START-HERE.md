@@ -39,11 +39,11 @@ bash run-aws.sh smoke
 确认 smoke 的协议、模型和路由正确，再逐步升压：
 
 ```bash
-STRESS_MAX_VUS=200 STRESS_STEP_DURATION=3m WARMUP_DURATION=15s \
+STRESS_START_VUS=2000 STRESS_MAX_VUS=6000 STRESS_STEP_DURATION=3m WARMUP_DURATION=15s \
   bash run-aws.sh stress
 ```
 
-当前本机 `.env` 按用户要求使用 1,200、2,400、3,600、4,800、6,000 VU 五档，每档 2 分钟、升档 15 秒，预热 15 秒；最后用 15 秒降回 1,200 VU，再观察 2 分钟恢复（`STRESS_RECOVERY_DURATION=2m`）。直接 `bash run-aws.sh stress` 使用这组配置。发压约 13 分 15 秒，另有最多 2 分钟请求排空和约 4 分钟监控等待。6,000 是配置峰值，不代表已经验证的服务容量。
+当前本机 `.env` 使用 2,000、3,000、4,000、5,000、6,000 VU 五档，每档 1 分钟、升档 10 秒，预热 10 秒；最后用 10 秒降回 2,000 VU，再观察 1 分钟恢复（`STRESS_RECOVERY_DURATION=1m`）。直接 `bash run-aws.sh stress` 使用这组配置。发压约 6 分 50 秒，另有请求排空和监控等待。mixed 使用 `MIXED_VUS=2000` 实际固定并发，持续 1 分钟；longstream 固定 `LONG_VUS=2000`，持续 2 分钟。配置峰值不代表已经验证的服务容量。
 
 复测重点：比较首档和 `recovered_steady` 的成功率、P95、TTFT，以及 PG 连接数和各主机资源是否回落。上一轮 1,200→2,400 VU 时成功吞吐约 162→170 请求/秒，P95 从约 11 秒增加至约 30 秒；PG 连接达到 300，与三台应用配置的每台 100 个连接上限一致，但仅凭该现象无法证明连接池等待。先保留服务端配置，用完整观测复测，再决定是否调整连接池或 SQL。
 
@@ -97,7 +97,7 @@ node lib/report-generator.js logs/实际前缀.log logs/实际前缀.json
   失败/未完成流与首字缺失数另外保留。事件可能包含多个 token，事件间隔不是逐 token 延迟。
 - 本地：主机 CPU/内存、每个网络接口和测量进程 CPU/RSS/事件循环延迟。
   本地代理可能成为瓶颈，必须结合这些数据解释高并发结果。
-- CloudWatch 为分钟级，短档位可能没有完整分钟；缺失不是零。
+- CloudWatch 为分钟级，严格档内统计仅纳入完整落在窗口内的分钟；边界分钟另列参考，不计入档内均值、峰值或 Sum，不跨档相加；缺失不是零。
   ALB 无错误时某些错误指标可能根本不发布，报告仍显示缺失而不臆测零。
 - PG 指标不等同 SQL 慢查询或锁等待明细；没有采集 SQL 正文、数据库凭据、真实提示词或响应正文。
 - 报告不会仅凭曲线自动宣布“服务器极限”。需结合固定负载复测和恢复验证；mock 结果不代表真实模型容量。

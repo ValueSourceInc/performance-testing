@@ -98,7 +98,7 @@ test('real k6 records staged local traffic, failures and tails and still reports
     env: { PATH: process.env.PATH, HOME: process.env.HOME, OUTPUT_DIR: dir,
       BASE_URL: `http://127.0.0.1:${server.address().port}`, API_KEY: 'local-fixture-secret', API_KEYS: 'local-fixture-secret', MODELS: 'local-fixture-model',
       STREAM_METER: '1', AWS_METRICS: '0',
-      STRESS_MAX_VUS: '5', STRESS_STEP_DURATION: '500ms', STRESS_RAMP_DURATION: '100ms', STRESS_RECOVERY_DURATION: '500ms', WARMUP_DURATION: '100ms', REQ_TIMEOUT_MS: '2s',
+      STRESS_START_VUS: '1', STRESS_MAX_VUS: '5', STRESS_STEP_DURATION: '500ms', STRESS_RAMP_DURATION: '100ms', STRESS_RECOVERY_DURATION: '500ms', WARMUP_DURATION: '100ms', REQ_TIMEOUT_MS: '2s',
       MIN_SUCCESS_RATE: '1', MAX_SUCCESS_P95_MS: '500', MIN_STAGE_SAMPLES: '1', MIN_STEADY_SECONDS: '0.1', UPSTREAM_MODE: 'mock',
       HTTP_PROXY: 'http://127.0.0.1:1', HTTPS_PROXY: 'http://127.0.0.1:1', http_proxy: 'http://127.0.0.1:1', https_proxy: 'http://127.0.0.1:1' },
   });
