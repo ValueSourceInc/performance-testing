@@ -142,3 +142,7 @@ npm test
 
 包含分档归属、尾部窗口、未结束请求、协议判定、历史报告降级，以及真实 k6 对本地 HTTP fixture 的短测。
 安装 k6 时会执行本地集成测试；未安装时该测试明确跳过。自检不访问生产地址，不产生模型费用。
+
+## 百万级单次输入
+
+使用 `LONG_INPUT_TOKENS=1000000 LONG_VUS=1 REQ_TIMEOUT_MS=3m bash run-aws.sh longstream`。输入大小与输出长度独立，不增加多轮对话。计数口径、完整命令和服务器日志下载方式见 [单次百万 token 输入压测](docs/LARGE-INPUT.md)。

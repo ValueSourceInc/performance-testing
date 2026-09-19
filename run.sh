@@ -114,7 +114,8 @@ for c in "BASE_URL=$BASE_URL" "MODELS=$MODELS" "REQ_TIMEOUT_MS=$REQ_TIMEOUT_MS" 
          "MIXED_RPS=${MIXED_RPS:-}" "MIXED_DURATION=${MIXED_DURATION:-}" \
          "MIXED_PREALLOCATED_VUS=${MIXED_PREALLOCATED_VUS:-}" "MIXED_MAX_VUS=${MIXED_MAX_VUS:-}" \
          "MOCK_FAULTS=${MOCK_FAULTS:-off}" "API_KEYS_COUNT=$(echo "$API_KEYS" | tr ',' '\n' | wc -l | tr -d ' ')" \
-         "PROMPTS_FILE=${PROMPTS_FILE:-}" "PROMPT_KIND=${PROMPT_KIND:-}" "STREAM_RATIO=${STREAM_RATIO:-}" "MOCK_MAX_TOKENS=${MOCK_MAX_TOKENS:-}"; do
+         "PROMPTS_FILE=${PROMPTS_FILE:-}" "PROMPT_KIND=${PROMPT_KIND:-}" "STREAM_RATIO=${STREAM_RATIO:-}" "MOCK_MAX_TOKENS=${MOCK_MAX_TOKENS:-}" \
+         "LONG_INPUT_TOKENS=${LONG_INPUT_TOKENS:-}"; do
   echo "config: ${c%%=*}=$(echo "${c#*=}" | sed 's/ *$//')" | tee -a "$LOG"
 done
 set +e
@@ -135,6 +136,7 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
   -e PROMPT_KIND="${PROMPT_KIND:-}" \
   -e STREAM_RATIO="${STREAM_RATIO:-}" \
   -e MOCK_MAX_TOKENS="${MOCK_MAX_TOKENS:-}" \
+  -e LONG_INPUT_TOKENS="${LONG_INPUT_TOKENS:-}" \
   --summary-export "$SUMMARY_JSON" \
   "scenarios/${SCENARIO}.js"
 
