@@ -64,3 +64,26 @@ test('k6 sends the full million-token input through the meter and records accura
     assert.equal(analysis.issues.length,0);
   } finally { child.kill('SIGKILL'); server.closeAllConnections(); server.close(); fs.rmSync(dir,{recursive:true,force:true}); }
 });
+
+test('PROMPT_MIX builds four buckets, keeps the bucket out of the request body, rolls by share', async () => {
+  const c = await config({ PROMPT_MIX: '70/20/9/1', PROMPT_MIX_TOKENS: '100,200,300,400' });
+  assert.equal(c.MIX_ENABLED, true);
+  assert.deepEqual(c.MIX_PROMPTS.map(p => p.bucket), ['short', 'mid', 'large', 'tail']);
+  assert.deepEqual(c.MIX_PROMPTS.map(p => p.prompt), [' context'.repeat(100), ' context'.repeat(200), ' context'.repeat(300), ' context'.repeat(400)]);
+  const body = c.chatBody({ stream: true, prompt: c.MIX_PROMPTS[3].prompt, bucket: 'tail' });
+  assert.equal(JSON.parse(JSON.stringify(body)).promptBucket, undefined); // 不进请求体
+  assert.equal(body.promptBucket, 'tail');
+  const counts = [0, 0, 0, 0];
+  for (let i = 0; i < 10000; i++) counts[c.rollMixedIndex()]++;
+  assert.equal(counts.reduce((a, b) => a + b, 0), 10000);
+  assert.ok(counts[0] > 6000 && counts[0] < 8000, `short share off: ${counts}`);
+  assert.ok(counts[3] > 0 && counts[3] < 300, `tail share off: ${counts}`);
+  assert.equal(c.MIX_ENABLED ?? true, true);
+});
+
+test('invalid PROMPT_MIX fails; unset mix keeps legacy single-size behavior', async () => {
+  for (const value of ['70/20/9', 'a/b/c/d', '-1/20/9/1', '0/0/0/0']) await assert.rejects(config({ PROMPT_MIX: value }));
+  const c = await config({});
+  assert.equal(c.MIX_ENABLED, false);
+  assert.equal(c.MIX_PROMPTS, null);
+});

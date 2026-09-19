@@ -93,3 +93,14 @@ test('missing ends remain unresolved and truncated event files flag integrity er
     assert.equal(JSON.parse(fs.readFileSync(output)).id, 'request-1');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('groups split by prompt bucket when records carry one', async () => {
+  const { analyze } = await import('../lib/analyze.js');
+  const records = [
+    { id: '1', window: 'a', promptBucket: 'short', startMs: 0, endMs: 100, result: 'ok', model: 'm', stream: true, totalMs: 100 },
+    { id: '2', window: 'a', promptBucket: 'tail', startMs: 0, endMs: 200, result: 'ok', model: 'm', stream: true, totalMs: 200 },
+    { id: '3', window: 'a', startMs: 0, endMs: 50, result: 'ok', model: 'm', stream: true, totalMs: 50 },
+  ];
+  const a = analyze(records, { windows: [{ id: 'a', stage: 's', phase: 'steady', startMs: 0, endMs: 1000, target: 1 }], durationMs: 1000 }, 1000);
+  assert.deepEqual(a.groups.map(g => g.bucket).sort(), [null, 'short', 'tail']);
+});

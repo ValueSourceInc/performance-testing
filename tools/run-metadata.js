@@ -18,7 +18,10 @@ if (longInputTokens !== null && (!Number.isSafeInteger(longInputTokens) || longI
   throw new Error('LONG_INPUT_TOKENS must be an integer from 1 to 1000000');
 }
 const sizedInput = longInputTokens !== null && !['mixed', 'smoke'].includes(scenario);
-const samplePrompt = sizedInput ? `synthetic single user input: ${longInputTokens} text tokens (o200k_base/cl100k_base; excludes chat framing)`
+const mixRaw = value('PROMPT_MIX');
+const mixTokens = value('PROMPT_MIX_TOKENS');
+const samplePrompt = mixRaw ? `synthetic length mix ${mixRaw} (short/mid/large/tail shares; ${mixTokens || '2000,32000,128000,1000000'} tokens per bucket)`
+  : sizedInput ? `synthetic single user input: ${longInputTokens} text tokens (o200k_base/cl100k_base; excludes chat framing)`
   : scenario === 'mixed' ? 'short/long fixed synthetic samples'
   : value('PROMPT_KIND') || (value('PROMPTS_FILE') ? 'sampled prompts file' : 'short fixed synthetic sample');
 if (minSuccessRate > 1) throw new Error('MIN_SUCCESS_RATE must be <= 1');
