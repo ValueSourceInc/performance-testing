@@ -5,3 +5,4 @@ test-context.json
 .history
 .DS_Store
 __pycache__/
+logs-from-comfyui/

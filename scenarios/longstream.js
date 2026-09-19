@@ -9,6 +9,10 @@ import { scenarioOptions } from '../lib/load-plan.js';
 
 export const options = scenarioOptions('longstream', __ENV);
 
+// 每个 VU 只构建一次请求体:1M-token 输入的 body 构造(8MiB 字符串 + 序列化)
+// 是每迭代最贵的操作,重复构建会把 1000 VU 的发放速率压到 ~30 RPS 以下。
+const BODY = chatBody({ stream: true, promptKind: defaultPromptKind() });
+
 export default function () {
-  execChat(chatBody({ stream: true, promptKind: defaultPromptKind() }));
+  execChat(BODY);
 }

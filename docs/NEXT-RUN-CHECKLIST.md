@@ -45,3 +45,13 @@
 - **重试**：new-api 侧对上游的重试次数需在面板确认（RelayTimeout/RetryTimes），mock 与客户端重试均为 0。
 - **数据库写入**：报告已含 PG 连接数/IOPS/延迟/queue depth（CloudWatch），观察 `DatabaseConnections`、`WriteIOPS`、`CommitLatency` 是否随长流并发线性上涨。
 - **长连接**：ALB `ActiveConnectionCount`、new-api 实例 `NetworkOut` 曲线，longstream 场景下重点看连接是否泄漏（结束后 ActiveConnectionCount 是否回落到基线）。
+
+## 7. longstream 大输入（1M token）链路修复 ✅ 已修（2026-09-19 晚）
+
+- **根因（已本地复现确认）**：comfyui 轮 171057 的 `meter_exited` 是测量代理 V8 堆 OOM——`stream-meter.js` 把每个请求体完整读成 JS 字符串再 `JSON.parse` + `JSON.stringify` 重序列化，1000 并发 × 8 MiB body = 堆内 3 份拷贝，超过 Node 默认 ~4 GiB 堆上限（复现栈：`JsonStringify → Reached heap limit`）。
+- **修复**：
+  - meter 请求体改 Buffer 收集 + 原样转发（堆外，零拷贝零重序列化）；`stream` 标志用 `lib/stream-request.js` 新增 `detectStream()` 按字节探测 `"stream": true|false`。
+  - `requestChat` 接受 object 或已编码 string/Buffer/Uint8Array（后者原样透传）。
+  - `lib/requests.js` 每迭代 `JSON.stringify` 从 2 次减到 1 次，`bodyBytes` 对纯 ASCII 走快路径；`scenarios/longstream.js` 请求体提到 VU init 只构建一次（此前每迭代重建 8 MiB 字符串，1000 VU 发放被压到 ~30 RPS、本地甚至 0 迭代完成）。
+- **验证**：本地 mock 端到端 1000 VU × 1M token：meter 全程存活（修复前同负载必崩）、stream 记录齐全、真实 TTFT 采集成功（P50 1.1s）；k6 40 秒完成 1135 迭代（修复前 0）。剩余 client_error 为本机 mock 扛不住 1000 并发的自身上限，与测量链路无关。
+- **注意**：meter 不再对非法 JSON 返回 400（大 body 无法低成本校验），垃圾请求会转发给上游由其拒绝；k6 正常路径不受影响。

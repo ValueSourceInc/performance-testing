@@ -71,3 +71,17 @@ test('incomplete streams and data after DONE fail validation', async t => {
     assert.equal((await requestChat(url, 'secret', { stream: true }, 'test', 1000)).errorType, error);
   }
 });
+
+test('forwards a raw Buffer request body without serializing it again', async t => {
+  const requestBody = Buffer.from('{"model":"fixture","stream":true,"messages":[]}');
+  const url = await fixture(t, async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    assert.deepEqual(Buffer.concat(chunks), requestBody);
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    res.end('data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
+  });
+  const result = await requestChat(url, 'secret', requestBody, 'buffer-body', 1000);
+  assert.equal(result.result, 'ok');
+  assert.equal(result.contentEvents, 1);
+});

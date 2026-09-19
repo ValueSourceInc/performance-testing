@@ -4,7 +4,7 @@ import http from 'node:http';
 import os from 'node:os';
 import { startNetworkSampler } from '../lib/network-sampler.js';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
-import { requestChat } from '../lib/stream-request.js';
+import { requestChat, detectStream } from '../lib/stream-request.js';
 import { durationMs } from '../lib/load-plan.js';
 
 const [target, output, readyFile] = process.argv.slice(2);
@@ -52,15 +52,18 @@ async function handle(req, res) {
   if (req.method !== 'POST' || req.url !== '/v1/chat/completions') { res.writeHead(404); res.end(); return; }
   const id = req.headers['x-request-id'];
   if (typeof id !== 'string' || id.length > 200) { res.writeHead(400); res.end(); return; }
-  let raw = '', size = 0;
-  req.setEncoding('utf8');
+  // Bodies stay as Buffers (off-heap) and are forwarded byte-for-byte; the
+  // JS heap only ever holds per-chunk slices, so 1000 x 8 MiB longstream
+  // requests cannot exhaust the default ~4 GiB V8 heap.
+  const chunks = [];
+  let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
     if (size > 10 * 1024 * 1024) { res.writeHead(413); res.end(); return; }
-    raw += chunk;
+    chunks.push(chunk);
   }
-  let body;
-  try { body = JSON.parse(raw); } catch { res.writeHead(400); res.end(); return; }
+  const body = Buffer.concat(chunks);
+  const stream = detectStream(body);
   const controller = new AbortController();
   res.on('close', () => { if (!res.writableEnded) controller.abort(); });
   const key = (req.headers.authorization || '').replace(/^Bearer /, '');
@@ -77,7 +80,7 @@ async function handle(req, res) {
   });
   if (!res.headersSent) res.writeHead(result.errorType === 'client_timeout' ? 504 : 502);
   res.end();
-  fs.writeSync(fd, JSON.stringify({ id, startedAt, stream: !!body.stream, ...result }) + '\n');
+  fs.writeSync(fd, JSON.stringify({ id, startedAt, stream, ...result }) + '\n');
 }
 
 let stopping = false;
