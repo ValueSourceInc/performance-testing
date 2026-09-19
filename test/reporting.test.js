@@ -4,6 +4,33 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+test('stress recovery returns to the initial load and keeps its own observed window', async () => {
+  const { buildPlan } = await import('../lib/load-plan.js');
+  const p = buildPlan('stress', { STRESS_MAX_VUS: '1000', STRESS_STEP_DURATION: '3m',
+    STRESS_RAMP_DURATION: '30s', WARMUP_DURATION: '15s', STRESS_RECOVERY_DURATION: '3m' });
+  assert.equal(p.durationMs, 1230000);
+  assert.equal(p.scenario.stages.at(-1).target, 200);
+  assert.equal(p.windows.at(-1).id, 'recovered_steady');
+  assert.equal(p.windows.at(-1).endMs - p.windows.at(-1).startMs, 165000);
+  assert.equal(p.windows.at(-3).from, 1000);
+  assert.equal(p.windows.at(-3).target, 200);
+  assert.throws(() => buildPlan('stress', { WARMUP_DURATION: '15s', STRESS_RECOVERY_DURATION: '10s' }));
+});
+
+test('transport error diagnostics retain codes and time ranges without rewriting failures as cancellations', async () => {
+  const { analyze } = await import('../lib/analyze.js');
+  const records = [
+    { result: 'fail', errorType: 'client_error', errorCode: 1633, endTime: '2026-09-18T12:49:53Z' },
+    { result: 'fail', errorType: 'client_error', errorCode: 1000, endTime: '2026-09-18T12:51:39Z' },
+    { result: 'fail', errorType: 'client_error', errorCode: 1000, endTime: '2026-09-18T12:51:39.900Z' },
+  ];
+  const a = analyze(records, { windows: [], durationMs: 1000 }, 1000);
+  assert.equal(a.totals.failed, 3);
+  assert.equal(a.totals.cancelled, 0);
+  assert.deepEqual(a.errorDetails.find(e => e.code === 1000), { type: 'client_error', code: 1000,
+    count: 2, firstAt: '2026-09-18T12:51:39.000Z', lastAt: '2026-09-18T12:51:39.900Z' });
+});
+
 test('stress has real holds, separate ramp windows and warmup', async () => {
   const { buildPlan } = await import('../lib/load-plan.js');
   const p = buildPlan('stress', { STRESS_MAX_VUS: '1000', STRESS_STEP_DURATION: '3m', STRESS_RAMP_DURATION: '10s', WARMUP_DURATION: '15s' });

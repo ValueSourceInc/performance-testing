@@ -1,5 +1,9 @@
 # Performance Testing for new-api
 
+完整 AWS 报告入口：[`START-HERE.md`](START-HERE.md)。在 mock 已独立启动后执行
+`bash run-aws.sh smoke`，自动测量真实流式首字时间、采集 AWS 指标并生成 HTML/Markdown。
+mock 的启动、更新、删除仍由基础设施项目独立管理；压测命令不改变其生命周期。
+
 k6 压测与 Node.js 分档报告。支持 OpenAI Chat Completions 文本流式/非流式请求。
 需要 k6、Node.js >=18；HTTPX 探针另需 Python 和 httpx。
 
@@ -113,8 +117,10 @@ k6 非零退出时仍生成报告，并保留退出码；运行失败、未采�
 填写服务端版本、机器与依赖、路由/重试、缓存、监控曲线和计费核对附件路径。不要放真实 Key、账号隐私或提示词。
 未填写的字段显示待核对；提供附件路径不代表程序验证了证据。
 
-本工具不自动读取生产监控或账本。new-api、mock 与压测机资源曲线，数据库排队、重试放大、计费和恢复需要另外采集。
-k6 HTTP 会缓冲流式响应，不能测真实首字 TTFT；报告明确标为未采集。
+基础 `run.sh` 默认不读取生产监控；`run-aws.sh` 自动接入 AWS 监控、mock 快照和本地资源数据。
+数据库内部排队、重试归因、计费等仍需对应证据，不能由 CloudWatch 自动推导。
+k6 HTTP 会缓冲流式响应；`run-aws.sh` 使用 localhost 测量代理逐段解析上游 SSE，按请求 ID 合并真实首字时间。
+基础入口未启用 `STREAM_METER=1` 时 TTFT 明确标为未采集。
 `tools/sse_probe.py` 是独立低负载探针，其结果不能代替本轮同档位 TTFT，也不能用于证明容量。
 状态码不能区分本站与上游限流来源；客户端错误不能证明请求到达服务端。
 

@@ -7,11 +7,22 @@
     "test": "node --test",
     "report": "node lib/report-generator.js"
   },
-  "keywords": ["k6", "performance", "testing", "new-api", "llm"],
+  "keywords": [
+    "k6",
+    "performance",
+    "testing",
+    "new-api",
+    "llm"
+  ],
   "author": "",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
   },
-  "packageManager": "pnpm@12.4.2"
+  "packageManager": "pnpm@12.4.2",
+  "dependencies": {
+    "eventsource-parser": "3.0.6",
+    "markdown-it": "14.3.2",
+    "systeminformation": "5.33.11"
+  }
 }

@@ -22,6 +22,7 @@ const version = spawnSync('k6', ['version'], { encoding: 'utf8' });
 const context = process.env.TEST_CONTEXT_FILE ? JSON.parse(fs.readFileSync(process.env.TEST_CONTEXT_FILE, 'utf8')) : {};
 const allowed = ['owner', 'serverVersion', 'serverResources', 'database', 'cache', 'proxy', 'instances', 'dataScale', 'environmentDifferences', 'networkLocation', 'routing', 'accountLimits', 'upstreamLimits', 'retries', 'cachePolicy', 'resourceEvidence', 'billingEvidence', 'recoveryEvidence', 'ttftEvidence', 'stopConditions'];
 fs.writeFileSync(output, JSON.stringify({ schema: 1, runId: value('RUN_ID'), createdAt: new Date().toISOString(),
+  streamMeter: process.env.STREAM_METER === '1', awsMonitoring: process.env.AWS_METRICS === '1',
   target: target.toString(), plan, revision: git.status === 0 ? git.stdout.trim() : null, dirty: !!dirty.stdout?.trim(),
   k6Version: version.status === 0 ? version.stdout.trim() : null,
   client: { platform: os.platform(), arch: os.arch(), cpus: os.cpus().length, cpuModel: os.cpus()[0]?.model, memoryBytes: os.totalmem() },

@@ -7,6 +7,65 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 
+test('authorization denial stops load and still writes a report with its safe reason', {timeout:15000},async t=>{
+  if(spawnSync('k6',['version']).status!==0)return t.skip('k6 not installed');
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'denied-load-'));let calls=0;
+  const server=http.createServer((req,res)=>{calls++;req.resume();res.writeHead(403,{'Content-Type':'application/json'});res.end('{"error":{"code":"insufficient_user_quota","message":"private-details"}}')});
+  server.listen(0,'127.0.0.1');await once(server,'listening');
+  const child=spawn('bash',['run.sh','smoke'],{env:{...process.env,BASE_URL:`http://127.0.0.1:${server.address().port}`,OUTPUT_DIR:dir,
+    API_KEY:'fixture',API_KEYS:'fixture',AWS_METRICS:'0',STREAM_METER:'1',SMOKE_DURATION:'10s',WARMUP_DURATION:'0s',REQ_TIMEOUT_MS:'2s'}});
+  child.stdout.on('data',()=>{});child.stderr.on('data',()=>{});
+  try{
+    const [code]=await once(child,'close');assert.equal(code,108);assert(calls<=2,`unexpected requests: ${calls}`);
+    const html=fs.readdirSync(dir).find(f=>f.endsWith('.html'));assert(html);
+    const report=fs.readFileSync(path.join(dir,html),'utf8');assert.match(report,/insufficient_user_quota/);assert(!report.includes('private-details'));
+  }finally{child.kill('SIGKILL');server.closeAllConnections();server.close();fs.rmSync(dir,{recursive:true,force:true})}
+});
+
+test('Ctrl+C preserves the log pipe, drains the meter and generates a partial report', { timeout: 30000 }, async t => {
+  if (spawnSync('k6', ['version']).status !== 0) return t.skip('k6 not installed');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'perf-interrupt-'));
+  let calls = 0, child, interrupted = false;
+  const server = http.createServer(async (req, res) => {
+    for await (const chunk of req) { /* drain request */ }
+    calls++;
+    if (calls >= 4 && !interrupted) {
+      interrupted = true;
+      setTimeout(() => process.kill(-child.pid, 'SIGINT'), 50);
+    }
+    await new Promise(resolve => setTimeout(resolve, 200));
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  child = spawn('bash', ['run.sh', 'soak'], {
+    detached: true,
+    env: { ...process.env, OUTPUT_DIR: dir, BASE_URL: `http://127.0.0.1:${server.address().port}`,
+      API_KEY: 'fixture', API_KEYS: 'fixture', AWS_METRICS: '0', STREAM_METER: '1',
+      SOAK_VUS: '2', SOAK_DURATION: '20s', WARMUP_DURATION: '0s', REQ_TIMEOUT_MS: '2s' },
+  });
+  let output = '';
+  child.stdout.on('data', c => { output += c; });
+  child.stderr.on('data', c => { output += c; });
+  try {
+    await once(child, 'close');
+    assert(interrupted, output);
+    const files = fs.readdirSync(dir);
+    const meta = JSON.parse(fs.readFileSync(path.join(dir, files.find(f => f.endsWith('.meta.json')))));
+    assert.notEqual(meta.exitCode, 141, 'SIGINT must not break the tee pipe');
+    assert(files.some(f => f.endsWith('.html')), output);
+    assert(files.some(f => f.endsWith('.client.json')), output);
+    const log = fs.readFileSync(path.join(dir, files.find(f => f.endsWith('.log'))), 'utf8');
+    assert.match(log, /TOTAL RESULTS|THRESHOLDS|http_reqs|iterations/);
+  } finally {
+    try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already exited */ }
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('real k6 records staged local traffic, failures and tails and still reports threshold failure', { timeout: 30000 }, async t => {
   if (spawnSync('k6', ['version']).status !== 0) return t.skip('k6 not installed');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'perf-integration-'));
@@ -38,7 +97,8 @@ test('real k6 records staged local traffic, failures and tails and still reports
     cwd: path.resolve(import.meta.dirname || path.dirname(new URL(import.meta.url).pathname), '..'),
     env: { PATH: process.env.PATH, HOME: process.env.HOME, OUTPUT_DIR: dir,
       BASE_URL: `http://127.0.0.1:${server.address().port}`, API_KEY: 'local-fixture-secret', API_KEYS: 'local-fixture-secret', MODELS: 'local-fixture-model',
-      STRESS_MAX_VUS: '5', STRESS_STEP_DURATION: '500ms', STRESS_RAMP_DURATION: '100ms', WARMUP_DURATION: '100ms', REQ_TIMEOUT_MS: '2s',
+      STREAM_METER: '1', AWS_METRICS: '0',
+      STRESS_MAX_VUS: '5', STRESS_STEP_DURATION: '500ms', STRESS_RAMP_DURATION: '100ms', STRESS_RECOVERY_DURATION: '500ms', WARMUP_DURATION: '100ms', REQ_TIMEOUT_MS: '2s',
       MIN_SUCCESS_RATE: '1', MAX_SUCCESS_P95_MS: '500', MIN_STAGE_SAMPLES: '1', MIN_STEADY_SECONDS: '0.1', UPSTREAM_MODE: 'mock',
       HTTP_PROXY: 'http://127.0.0.1:1', HTTPS_PROXY: 'http://127.0.0.1:1', http_proxy: 'http://127.0.0.1:1', https_proxy: 'http://127.0.0.1:1' },
   });
@@ -60,8 +120,11 @@ test('real k6 records staged local traffic, failures and tails and still reports
     assert(a.totals.errors.client_timeout > 0);
     assert(a.totals.errors.client_error > 0);
     assert(a.totals.succeeded > 0);
-    assert(a.drain.completed > 0);
-    assert.equal(a.cohorts.filter(c => c.phase === 'steady').length, 5);
+    assert(a.totals.successTtft.count > 0);
+    // Failure backoff can leave no requests in flight at the plan end.
+    // Cross-window completion and drain accounting are tested in reporting.test.js.
+    assert.equal(a.cohorts.filter(c => c.phase === 'steady').length, 6);
+    assert(a.cohorts.find(c => c.id === 'recovered_steady').issued > 0);
     assert(a.cohorts.every(c => c.issued === c.succeeded + c.failed + c.cancelled + c.unresolved));
     const report = fs.readFileSync(path.join(dir, files.find(f => f.endsWith('.md'))), 'utf8');
     assert.match(report, /数值门槛未通过/);
